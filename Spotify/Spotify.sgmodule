@@ -11,7 +11,7 @@
 #
 # Rewritten 2026-11-26 (v4) strictly against the official Surge manual (manual.nssurge.com):
 # - [URL Rewrite] reject lines use "_" as the replacement placeholder (manual: "use _ as a placeholder"),
-#   and the only reject type is plain "reject". Surge has no reject-dict / reject-200.
+#   and the only reject type is plain "reject". Surge has no dict or 200 reject types.
 # - [Script] booleans are true/false (manual), and max-size=-1 means no limit (manual).
 # - [Rule] AND / PROTOCOL,QUIC follows the manual Logical Rules syntax, policy REJECT.
 # - [Header Rewrite] follows the manual: http-request <regex> header-del <field>.
