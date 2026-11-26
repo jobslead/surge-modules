@@ -1,73 +1,41 @@
 #!name=Spotify
-#!desc=Removes Spotify ads and unlocks some premium features. Audio quality cannot be set to Very High. Log in again after enabling the module to apply the full configuration.
+#!desc=Removes Spotify ads and unlocks some premium features. Audio quality cannot be set to Very High. Optional: hide the discovery feed on the Now Playing screen, the membership info in Settings and the AI DJ. Log in again after enabling the module to apply the full configuration.
 #!author=devchristian1337
-#!icon=https://raw.githubusercontent.com/devchristian1337/loon-plugins/refs/heads/main/App-Icons/spotify.png
 #!homepage=https://github.com/devchristian1337/loon-plugins/blob/main/README.md
-#!system=ios,mac
-
-# Converted from Loon plugin (2026-11-10):
-# https://raw.githubusercontent.com/devchristian1337/loon-plugins/refs/heads/main/Plugins/Spotify.lpx
-# Source scripts are still loaded from that repo, so the module stays up to date with the scripts.
-#
-# Rewritten 2026-11-26 (v4) strictly against the official Surge manual (manual.nssurge.com):
-# - [URL Rewrite] reject lines use "_" as the replacement placeholder (manual: "use _ as a placeholder"),
-#   and the only reject type is plain "reject". Surge has no dict or 200 reject types.
-# - [Script] booleans are true/false (manual), and max-size=-1 means no limit (manual).
-# - [Rule] AND / PROTOCOL,QUIC follows the manual Logical Rules syntax, policy REJECT.
-# - [Header Rewrite] follows the manual: http-request <regex> header-del <field>.
-# - [MITM] hostname uses %APPEND% and "*" wildcards per the manual Host List rules.
-#
-# Loon-only features that Surge cannot do as-is, and how they were handled:
-# 1. [Argument] switches: Surge has no per-line conditional (enable={...} / request if ... then ...).
-#    - spot_remote_config (default false, recommended): see [Script] below. Local override (ev3) is active by default.
-#    - hide_discovery_feed / hide_membership_info / hide_ai_dj (all default true): converted to unconditional
-#      reject rules in [URL Rewrite] below. To re-show one of them, delete or comment out its line.
-# 2. Loon [Rewrite] is split in Surge into [Header Rewrite] (header-del) and [URL Rewrite] (reject).
-# 3. Surge runs only the FIRST matching http-response script per response, same as Loon. Do not enable
-#    both protobuf scripts at once.
-#
-# Before enabling this, disable any other Spotify module (e.g. the old SIJULY / app2smile one),
-# otherwise the two modules will fight over the same URLs.
+#!icon=https://raw.githubusercontent.com/devchristian1337/loon-plugins/refs/heads/main/App-Icons/spotify.png
 
 [Rule]
-# Block QUIC to spotify.com so Spotify falls back to TCP (fixes random song skipping)
 AND,((DOMAIN-SUFFIX,spotify.com),(PROTOCOL,QUIC)),REJECT
 DOMAIN,aet.spotify.com,REJECT
 
 [Header Rewrite]
-# Since app 9.1.98 the config / account attributes are refreshed through these two endpoints;
-# without the conditional header the server answers 304 and the app keeps its unpatched cache.
 http-request ^https:\/\/(spclient\.wg\.spotify\.com|.*-spclient\.spotify\.com(:443)?)\/user-customization-service\/v1\/customize header-del if-none-match
-http-request ^https:\/\/(?:spclient\.wg|[\w-]+-spclient)\.spotify\.com(?::443)?\/(?:remote-config-resolver\/v\d+\/configuration|nebula\/v\d+\/configuration\/attributes)(?:\?.*)?$ header-del if-none-match
+# Since app 9.1.98 the configuration and the account attributes are refreshed through these two endpoints; without the conditional header the server answers 304 and the app keeps its unpatched cache.
+http-request ^https:\/\/(?:spclient\.wg|[\w-]+-spclient)\.spotify\.com(?::443)?\/(?:remote-config-resolver\/v\d+\/configuration|nebula\/v\d+\/configuration\/attributes)(?:\?[^#]*)?$ header-del if-none-match
 
 [URL Rewrite]
-# Ad delivery endpoints used by the player core and the Home banner (ads/*, ad-logic/*, ad-on-app-open)
-# and the Premium upsell offers: a failed fetch makes the app skip the ad break.
-^https:\/\/(spclient\.wg|.*-spclient)\.spotify\.com(:443)?\/pendragon _ reject
-^https:\/\/(?:spclient\.wg|[\w-]+-spclient)\.spotify\.com(?::443)?\/(?:ads\/|ad-logic\/|.*\/ad-on-app-open|premium-marketing\/upsellOffer) _ reject
-# Optional preferences from Loon, all default true, now unconditional (see header notes):
+# Ad delivery endpoints used by the player core and the Home banner (ads/*, ad-logic/*, ad-on-app-open) and the Premium upsell offers: a failed fetch makes the app skip the ad break.
+^https:\/\/(?:spclient\.wg|[\w-]+-spclient)\.spotify\.com(?::443)?\/(?:ads\/|ad-logic\/|[^?#]*\/ad-on-app-open|premium-marketing\/upsellOffer) _ reject
+
+[Map Local]
+^https:\/\/(spclient\.wg|.*-spclient)\.spotify\.com(:443)?\/pendragon data-type=text data="{}" status-code=200 header="Content-Type: application/json"
+# Optional preferences (enabled by default, matching the original Loon plugin defaults; comment out any line to disable):
 # Hide discovery feed on the Now Playing screen
-^https:\/\/(?:spclient\.wg|[\w-]+-spclient)\.spotify\.com(?::443)?\/watch-feed-entrypoints\/v\d\/discovery-from-seed _ reject
+^https:\/\/(?:spclient\.wg|[\w-]+-spclient)\.spotify\.com(?::443)?\/watch-feed-entrypoints\/v\d\/discovery-from-seed data-type=text data="{}" status-code=200 header="Content-Type: application/json"
 # Hide membership info in Settings (display only)
-^https:\/\/[\w-]+-spclient\.spotify\.com(?::443)?\/pam-view-service\/ _ reject
-# Hide AI DJ (blocks the AI DJ playlist id so it does not appear)
-^https:\/\/.*37i9dQZF1EYkqdzj48dyYq _ reject
+^https:\/\/[\w-]+-spclient\.spotify\.com(?::443)?\/pam-view-service\/ data-type=text data="{}" status-code=200 header="Content-Type: application/json"
+# Hide AI DJ
+37i9dQZF1EYkqdzj48dyYq data-type=text data="{}" status-code=200 header="Content-Type: application/json"
+
+[Script]
+Spotify_gabo = type=http-request, pattern=^https:\/\/(.*-spclient\.spotify\.com(:443)?|spclient\.wg\.spotify\.com)\/gabo-receiver-service, script-path=https://raw.githubusercontent.com/devchristian1337/loon-plugins/refs/heads/main/Scripts/Spotify/spot-gabo.js, timeout=10
+Spotify_search_ads = type=http-response, pattern=^https:\/\/(spclient\.wg\.spotify\.com|.*-spclient\.spotify\.com(:443)?)\/browsita\/v.\/browse, script-path=https://raw.githubusercontent.com/devchristian1337/loon-plugins/refs/heads/main/Scripts/Spotify/spot-NoSearchAd.js, requires-body=true, binary-body-mode=true, timeout=10
+Spotify_home_ads = type=http-response, pattern=^https:\/\/(spclient\.wg\.spotify\.com|.*-spclient\.spotify\.com(:443)?)\/casita\/v.\/home\/, script-path=https://raw.githubusercontent.com/devchristian1337/loon-plugins/refs/heads/main/Scripts/Spotify/spot-NoHomeAd.js, requires-body=true, binary-body-mode=true, timeout=10
+Spotify_scroll_ads = type=http-response, pattern=^https:\/\/(spclient\.wg\.spotify\.com|.*-spclient\.spotify\.com(:443)?)\/scrollsita\/v.\/scroll\/spotify, script-path=https://raw.githubusercontent.com/devchristian1337/loon-plugins/refs/heads/main/Scripts/Spotify/spot-NoScrollAd.js, requires-body=true, binary-body-mode=true, timeout=10
+# Remote protobuf patch (disabled by default, same as spot_remote_config=false in Loon). To use it instead of local override, uncomment the line below and keep it above Spotify_protobuf_local:
+# Spotify_protobuf_remote = type=http-response, pattern=^https:\/\/(spclient\.wg\.spotify\.com|.*-spclient\.spotify\.com(:443)?)\/(bootstrap\/v1\/bootstrap|user-customization-service\/v1\/customize)(\?.*)?$, script-path=https://raw.githubusercontent.com/devchristian1337/loon-plugins/refs/heads/main/Scripts/Spotify/spot-proto-eevee.js, requires-body=true, binary-body-mode=true, timeout=10
+Spotify_protobuf_local = type=http-response, pattern=^https:\/\/(spclient\.wg\.spotify\.com|.*-spclient\.spotify\.com(:443)?)\/(bootstrap\/v1\/bootstrap|user-customization-service\/v1\/customize)(\?.*)?$, script-path=https://raw.githubusercontent.com/devchristian1337/loon-plugins/refs/heads/main/Scripts/Spotify/spot-proto-ev3.js, requires-body=true, binary-body-mode=true, timeout=10
+Spotify_protobuf_config_attributes = type=http-response, pattern=^https:\/\/(?:spclient\.wg|[\w-]+-spclient)\.spotify\.com(?::443)?\/(?:remote-config-resolver\/v\d+\/configuration|nebula\/v\d+\/configuration\/attributes)(?:\?[^#]*)?$, script-path=https://raw.githubusercontent.com/devchristian1337/loon-plugins/refs/heads/main/Scripts/Spotify/spot-proto-ev3.js, requires-body=true, binary-body-mode=true, timeout=10
 
 [MITM]
 hostname = %APPEND% spclient.wg.spotify.com, *spclient.spotify.com
-
-[Script]
-Spotify-gabo = type=http-request,pattern=^https:\/\/(.*-spclient\.spotify\.com(:443)?|spclient\.wg\.spotify\.com)\/gabo-receiver-service,script-path=https://raw.githubusercontent.com/devchristian1337/loon-plugins/refs/heads/main/Scripts/Spotify/spot-gabo.js,timeout=10
-Spotify-search-ads = type=http-response,pattern=^https:\/\/(spclient\.wg\.spotify\.com|.*-spclient\.spotify\.com(:443)?)\/browsita\/v.\/browse,script-path=https://raw.githubusercontent.com/devchristian1337/loon-plugins/refs/heads/main/Scripts/Spotify/spot-NoSearchAd.js,requires-body=true,binary-body-mode=true,max-size=-1,timeout=10
-Spotify-home-ads = type=http-response,pattern=^https:\/\/(spclient\.wg\.spotify\.com|.*-spclient\.spotify\.com(:443)?)\/casita\/v.\/home\/,script-path=https://raw.githubusercontent.com/devchristian1337/loon-plugins/refs/heads/main/Scripts/Spotify/spot-NoHomeAd.js,requires-body=true,binary-body-mode=true,max-size=-1,timeout=10
-Spotify-scroll-ads = type=http-response,pattern=^https:\/\/(spclient\.wg\.spotify\.com|.*-spclient\.spotify\.com(:443)?)\/scrollsita\/v.\/scroll\/spotify,script-path=https://raw.githubusercontent.com/devchristian1337/loon-plugins/refs/heads/main/Scripts/Spotify/spot-NoScrollAd.js,requires-body=true,binary-body-mode=true,max-size=-1,timeout=10
-
-# Protobuf patch for bootstrap / customize. Only ONE of the two lines below may be active.
-# Active (default, recommended): local Premium config snapshot (spot-proto-ev3.js).
-# It also handles remote-config-resolver / nebula configuration and attributes (app 9.1.98+).
-Spotify-protobuf-local = type=http-response,pattern=^https:\/\/(spclient\.wg\.spotify\.com|.*-spclient\.spotify\.com(:443)?)\/(bootstrap\/v1\/bootstrap|user-customization-service\/v1\/customize)(\?.*)?$,script-path=https://raw.githubusercontent.com/devchristian1337/loon-plugins/refs/heads/main/Scripts/Spotify/spot-proto-ev3.js,requires-body=true,binary-body-mode=true,max-size=-1,timeout=10
-# Inactive alternative: remote patch (spot-proto-eevee.js) - only edits the flags sent by the server.
-# To use it, comment out Spotify-protobuf-local above and uncomment the line below.
-# Spotify-protobuf-remote = type=http-response,pattern=^https:\/\/(spclient\.wg\.spotify\.com|.*-spclient\.spotify\.com(:443)?)\/(bootstrap\/v1\/bootstrap|user-customization-service\/v1\/customize)(\?.*)?$,script-path=https://raw.githubusercontent.com/devchristian1337/loon-plugins/refs/heads/main/Scripts/Spotify/spot-proto-eevee.js,requires-body=true,binary-body-mode=true,max-size=-1,timeout=10
-
-Spotify-protobuf-config = type=http-response,pattern=^https:\/\/(?:spclient\.wg|[\w-]+-spclient)\.spotify\.com(?::443)?\/(?:remote-config-resolver\/v\d+\/configuration|nebula\/v\d+\/configuration\/attributes)(?:\?.*)?$,script-path=https://raw.githubusercontent.com/devchristian1337/loon-plugins/refs/heads/main/Scripts/Spotify/spot-proto-ev3.js,requires-body=true,binary-body-mode=true,max-size=-1,timeout=10
